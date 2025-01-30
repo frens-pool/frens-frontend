@@ -204,7 +204,7 @@ export const SSVRegisterValidator = ({
         <div className="flex flex-col my-2 p-2 justify-center">
           <div>{/* <SelectedOperators /> */}</div>
           {/* TODO: check balance correct? */}
-          Pool SSV Balance : {SSVPoolBalance.toString()}{" "}
+          Pool SSV Balance : {SSVPoolBalance?.toString()}{" "}
           <div>
             <button
               className="btn bg-gradient-to-r from-frens-blue to-frens-teal text-white my-2 mr-2"

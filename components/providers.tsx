@@ -21,14 +21,15 @@ const projectId = process.env.NEXT_PUBLIC_WC_PROJECT_ID || "";
 const { chains, publicClient } = configureChains(
   [mainnet, holesky],
   [
-    infuraProvider({
-      apiKey: apiKey,
-    }),
-    jsonRpcProvider({
-      rpc: () => {
-        return {
-          http: "https://holesky.infura.io/v3/48089fbe53fa4ad18ffffd3115d11528",
-        };
+    jsonRpcProvider({ 
+      rpc: (chain) => {
+        if (chain.id === mainnet.id) {
+          return {
+            http: `${process.env.NEXT_PUBLIC_RPC_MAINNET}`,
+          };
+        } else {
+          return null;
+        }
       },
     }),
     publicProvider(),
@@ -40,17 +41,6 @@ const { connectors } = getDefaultWallets({
   projectId,
   chains,
 });
-
-// const connectors = connectorsForWallets([
-//   ...wallets,
-//   {
-//     groupName: "Wallets",
-//     wallets: [
-//       injectedWallet({ chains }),
-//       metaMaskWallet({ projectId, chains }),
-//     ],
-//   },
-// ]);
 
 const wagmiConfig = createConfig({
   autoConnect: true,

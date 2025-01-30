@@ -10,6 +10,7 @@ export type nftType = {
   poolAddress: Address;
   deposit: number;
   claimable: number;
+  owner: Address;
 };
 
 export function useUserNfts() {
@@ -95,6 +96,7 @@ export function useUserNfts() {
       claimable: parseFloat(
         getAttributeValue(json, "claimable").replace(" Eth", "")
       ),
+      owner: accountAddress as Address
     };
   };
 

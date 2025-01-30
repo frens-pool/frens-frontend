@@ -7,13 +7,16 @@ import {
   usePublicClient,
   Address,
 } from "wagmi";
-import { parseEther } from "viem";
+import { parseEther, encodeFunctionData } from "viem";
 
 import { etherscanUrl, ssvClusterListByOwnerApi } from "#/utils/externalUrls";
 import { useNetworkName } from "#/hooks/useNetworkName";
 import { FrensContracts } from "#/utils/contracts";
+import { useAllowance } from "#/hooks/read/useAllowance";
 import { useApprove } from "#/hooks/write/useApprove";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
+import { ethers } from "ethers";
+import { useTokenBalance } from "#/hooks/read/useTokenBalance";
 
 export const TopUpClusterBalance = ({
   poolAddress,
@@ -22,17 +25,19 @@ export const TopUpClusterBalance = ({
   poolAddress: Address;
   updateSSVBalance: (addedValue: number) => void;
 }) => {
+  const { data: allowance } = useAllowance(poolAddress)
   const [ssvAmount, setSsvAmount] = useState<number | undefined>(undefined);
   const [txHash, setTxHash] = useState<string | undefined>();
   const [clusterData, setClusterData] = useState<any>();
   const [cluster, setCluster] = useState<any>();
   const network = useNetworkName();
+  const { balance: ssvBalance } = useTokenBalance({ tokenAddress: FrensContracts[network].SSVTokenContract.address, accountAddress: poolAddress })
   const { address: walletAddress } = useAccount();
   const { chain } = useNetwork();
   const { data: walletClient } = useWalletClient();
   const publicClient = usePublicClient();
   const { data, write: approveSSVSpending } = useApprove({
-    spender: walletAddress!,
+    spender: FrensContracts[network].SSVNetworkContract.address!,
     value: "20000000000000000000",
   });
 
@@ -68,6 +73,7 @@ export const TopUpClusterBalance = ({
     fetchClusterList();
   }, []);
 
+  // TODO : this should be replaced by hooks/read/useClusterScanner
   const getClusterData = async (operatorIds: any) => {
     if (operatorIds && poolAddress && chain) {
       const contractAddress =
@@ -78,6 +84,7 @@ export const TopUpClusterBalance = ({
         nodeUrl: nodeUrl,
         ownerAddress: poolAddress,
         operatorIds,
+        network
       };
       const clusterDataTemp = await buildCluster(clusterParams);
       setClusterData(clusterDataTemp.cluster[1]);
@@ -90,6 +97,7 @@ export const TopUpClusterBalance = ({
       nodeUrl: string;
       ownerAddress: string;
       operatorIds: number[];
+      network: string;
     } | null
   ) {
     const clusterData = async () => {
@@ -114,19 +122,106 @@ export const TopUpClusterBalance = ({
       networkFeeIndex: clusterData.networkFeeIndex,
       index: clusterData.index,
       balance: clusterData.balance,
-      active: true,
+      active: clusterData.active,
     };
+
+    const functionArgs = [
+      poolAddress,
+      cluster.clusters[0].operators,
+      ssvAmount !== undefined ? parseEther(ssvAmount.toString()) : "1",
+      clusterParams,
+    ];
+
+    const encodedFunctionData = encodeFunctionData({
+      abi: FrensContracts[network].SSVNetworkContract.abi,
+      args: functionArgs,
+      functionName: "deposit",
+    });
+
     const { request } = await publicClient.simulateContract({
       account: walletAddress,
-      address: FrensContracts[network].SSVNetworkContract.address,
+      address: poolAddress,
+      abi: FrensContracts[network].StakingPool.abi,
+      args: [encodedFunctionData],
+      functionName: "callSSVNetwork",
+    });
+
+    if (walletClient) {
+      const txHash = await walletClient.writeContract(request);
+      setTxHash(txHash);
+    }
+  };
+
+
+  const reactivate = async () => {
+    const clusterParams = {
+      validatorCount: clusterData.validatorCount,
+      networkFeeIndex: clusterData.networkFeeIndex,
+      index: clusterData.index,
+      balance: clusterData.balance,
+      active: clusterData.active,
+    };
+
+    const functionArgs = [
+      cluster.clusters[0].operators,
+      ssvAmount !== undefined ? parseEther(ssvAmount.toString()) : "1",
+      clusterParams,
+    ];
+
+    const encodedFunctionData = encodeFunctionData({
       abi: FrensContracts[network].SSVNetworkContract.abi,
-      args: [
-        poolAddress,
-        cluster.clusters[0].operators,
-        ssvAmount !== undefined ? parseEther(ssvAmount.toString()) : "1",
-        clusterParams,
-      ],
-      functionName: "deposit",
+      args: functionArgs,
+      functionName: "reactivate",
+    });
+
+    const { request } = await publicClient.simulateContract({
+      account: walletAddress,
+      address: poolAddress,
+      abi: FrensContracts[network].StakingPool.abi,
+      args: [encodedFunctionData],
+      functionName: "callSSVNetwork",
+    });
+
+    if (walletClient) {
+      const txHash = await walletClient.writeContract(request);
+      setTxHash(txHash);
+    }
+  };
+
+  // liquidate the cluster (WARNING)! 
+
+  const liquidate = async () => {
+
+    if (!clusterData.active === true) {
+      throw new Error("Cannot liquidate an inactive cluster")
+    }
+
+    const clusterParams = {
+      validatorCount: clusterData.validatorCount,
+      networkFeeIndex: clusterData.networkFeeIndex,
+      index: clusterData.index,
+      balance: clusterData.balance,
+      active: clusterData.active,
+    };
+
+    const functionArgs = [
+      poolAddress,
+      cluster.clusters[0].operators,
+      clusterParams,
+    ];
+
+    const encodedFunctionData = encodeFunctionData({
+      abi: FrensContracts[network].SSVNetworkContract.abi,
+      args: functionArgs,
+      functionName: "liquidate",
+    });
+
+    const { request } = await publicClient.simulateContract({
+      account: walletAddress,
+      address: poolAddress,
+      abi: FrensContracts[network].StakingPool.abi,
+      args: [encodedFunctionData],
+      functionName: "callSSVNetwork",
     });
 
     if (walletClient) {
@@ -167,6 +262,8 @@ export const TopUpClusterBalance = ({
 
   return (
     <div className="w-full">
+
+      <div className="my-2">Available SSV balance in pool ( {ssvBalance ? Number.parseFloat(ethers.utils.formatUnits((ssvBalance), 18)).toFixed(4) : ""} SSV)</div>
       <div className="my-2">Select SSV amount</div>
       <div className="flex flex-col lg:flex-row items-start justify-start">
         <input
@@ -185,48 +282,69 @@ export const TopUpClusterBalance = ({
         />
         {walletAddress ? (
           <>
-            {approveSuccess ? (
-              <button
-                className={`${
-                  approveLoading
+
+            {clusterData ? (
+              <>
+              { allowance.toString() === "0" && (
+                <button
+                  className={`${approveLoading
                     ? "btn-medium btn-blue-border mx-4 loading"
                     : "btn-medium btn-blue-border mx-4"
-                }`}
-                onClick={() => {
-                  approveSSVSpending!();
-                }}
-                disabled={approveLoading}
-              >
-                {approveLoading ? "In progress" : "approve again"}
-              </button>
-            ) : (
-              <button
-                className={`${
-                  approveLoading
-                    ? "btn-medium btn-blue-border mx-4 loading"
-                    : "btn-medium btn-blue-border mx-4"
-                }`}
-                onClick={() => {
-                  approveSSVSpending!();
-                }}
-                disabled={approveLoading}
-              >
-                {approveLoading ? "In progress" : "approve ssv"}
-              </button>
-            )}
-            <button
-              className={`${
-                !approveSuccess
-                  ? "btn-medium opacity-50 text-white blue-to-teal"
-                  : "btn-medium opacity-1 text-white blue-to-teal"
-              }`}
-              onClick={() => {
-                topUp();
-              }}
-              disabled={!clusterData && !cluster && !approveSuccess}
-            >
-              top up
-            </button>
+                    }`}
+                  onClick={() => {
+                    approveSSVSpending!();
+                  }}
+                  disabled={approveLoading}
+                >
+                  {approveLoading ? "In progress" : "approve ssv"}
+                </button>
+                )}
+                {/* these actions can be performed when the cluster is active */}
+                {clusterData.active === true && (
+                  <>
+                    <button
+                      className={`${!approveSuccess
+                        ? "btn-medium opacity-50 text-white blue-to-teal"
+                        : "btn-medium opacity-1 text-white blue-to-teal"
+                        }`}
+                      onClick={() => {
+                        topUp();
+                      }}
+                      disabled={!clusterData && !cluster}
+                    >
+                      top up
+                    </button>
+                    <br />
+
+                    <button
+                      className={`${!approveSuccess
+                        ? "btn-medium opacity-50 text-white blue-to-teal"
+                        : "btn-medium opacity-1 text-white blue-to-teal"
+                        }`}
+                      onClick={() => {
+                        liquidate();
+                      }}
+                      disabled={!clusterData && !cluster}
+                    >
+                      liquidate!
+                    </button>
+                  </>
+                )}
+                {/* these actions can be performed when the cluster is not active */}
+                {clusterData.active === false && (
+                  <button
+                    className="btn-medium opacity-50 text-white blue-to-teal"
+                    onClick={() => {
+                      reactivate();
+                    }}
+                  >
+                    reactivate with {ssvAmount} SSV!
+                  </button>
+                )}
+              </>
+            ) : (<span>Running ClusterScanner... <span className="loading loading-spinner loading-lg text-frens-main"></span></span>)}
+
+
           </>
         ) : (
           <div className="ml-4">

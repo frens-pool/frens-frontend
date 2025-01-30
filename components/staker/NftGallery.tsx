@@ -37,9 +37,16 @@ export const NftGallery = ({ poolAddress }: Props) => {
       args: [nftID],
     })) as string;
 
+    const tokenOwner = (await publicClient.readContract({
+      address: FrensContracts[network].FrensPoolShare.address,
+      abi: FrensContracts[network].FrensPoolShare.abi,
+      functionName: "ownerOf",
+      args: [nftID],
+    })) as string;
+
     const jsonString = Buffer.from(tokenURI.substring(29), "base64").toString();
     const json = JSON.parse(jsonString);
-    return { ...json, nftID };
+    return { ...json, nftID , owner: tokenOwner};
   };
 
   if (poolNFTs.length === 0) {
@@ -76,9 +83,9 @@ export const NftGallery = ({ poolAddress }: Props) => {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        {poolNFTs.map(({ name, image, nftID }) => (
-          <div className="w-full" key={name}>
-            <CardForNFT key={name} name={name} image={image} nftID={nftID} />
+        {poolNFTs.map((NFTJson) => (
+          <div className="w-full" key={NFTJson.name}>
+            <CardForNFT key={NFTJson.name} name={NFTJson.name} image={NFTJson.image} nftID={NFTJson.nftID} owner={NFTJson.owner} claimable={NFTJson.attributes.find((attr: { trait_type: string; }) => attr.trait_type === "claimable")?.value} />
           </div>
         ))}
       </div>

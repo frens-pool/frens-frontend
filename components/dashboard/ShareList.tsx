@@ -5,6 +5,7 @@ import { Address, useAccount, usePublicClient } from "wagmi";
 import CardForNFT from "../staker/CardForNFT";
 import ClaimReward from "./ClaimReward";
 import { nftType } from "#/hooks/read/useUserNFTs";
+import Link from "next/link";
 
 interface Props {
   userNFTs: nftType[];
@@ -57,7 +58,7 @@ export const ShareList = ({ userNFTs }: Props) => {
       )}
 
       <div className="grid grid-cols-3 gap-4">
-        {userNFTs.map(({ name, image, nftID, poolAddress, claimable }) => (
+        {userNFTs.map(({ name, image, nftID, poolAddress, claimable, owner }) => (
           <div
             className="items-center space-x-1 rounded-xl border border-gray-300 bg-white shadow-sm"
             key={`${name}_${nftID?.toString()}`}
@@ -67,16 +68,25 @@ export const ShareList = ({ userNFTs }: Props) => {
               image={image}
               nftID={nftID}
               poolAddress={poolAddress}
+              owner={owner}
+              claimable={`${claimable} Eth`}
             />
-            {claimable > 0 && (
-              <div className="text-center">
+
+            <div className="text-center">
+              {claimable > 0 && (
                 <ClaimReward
                   poolAddress={poolAddress}
                   nftID={nftID}
                   claimable={claimable}
                 />
-              </div>
-            )}
+              )}
+              <Link href={`/pool/${poolAddress}`}>
+                <button className="btn bg-gradient-to-r from-frens-blue to-frens-teal text-white">
+                  Go to pool
+                </button>
+              </Link>
+            </div>
+
           </div>
         ))}
       </div>
